@@ -46,6 +46,11 @@ def get_user_info(access_token):
         raise Exception("Failed to retrieve user info: " + user_info.get('error_description', ''))
     return user_info
 
+def nav_to(url):
+    nav_script = """
+        <meta http-equiv="refresh" content="0; url='%s'">
+    """ % (url)
+    st.write(nav_script, unsafe_allow_html=True)
 
 def main():
     st.title('OAuth with Streamlit')
@@ -54,16 +59,17 @@ def main():
     session = OAuth2Session(client_id, client_secret, scope=scope, redirect_uri=redirect_uri)
 
     # Check if the user is logged in
-    if 'token' in st.session_state:
+    if 'user_info' in st.session_state:
         user_info = st.session_state['user_info']
         st.write(f"1. Welcome {user_info['name']}!")
         # Do the main thing here
-    elif 'code' in st.experimental_get_query_params():
+    elif 'scope' in st.experimental_get_query_params():
         # Exchange the code for a token
         token = exchange_code_for_token(st.experimental_get_query_params()['code'])
         user_info = get_user_info(token)
         st.session_state['token'] = token
         st.session_state['user_info'] = user_info
+        st.session_state['states_seen'] = "Passed 2"
         st.write("2. Welcome, ", user_info['name'])
         st.experimental_rerun()
     else:
