@@ -1,51 +1,90 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import streamlit as st
-from streamlit.logger import get_logger
+from authlib.integrations.requests_client import OAuth2Session
+import urllib.parse
+   
 
-LOGGER = get_logger(__name__)
+# Replace these with your client details
+client_id = st.secrets["client_id"]
+client_secret = st.secrets["client_secret"]
+redirect_uri = st.secrets["redirect_url"]  # This must match the redirect URI in your OAuth provider settings
+# redirect_url= "https://orange-happiness-v5vqwj5qp7q2p996-8501.app.github.dev/"
+scope='email profile'
+authorization_endpoint = 'https://accounts.google.com/o/oauth2/auth'
+token_endpoint = 'https://oauth2.googleapis.com/token'
+userinfo_endpoint = 'https://www.googleapis.com/oauth2/v1/userinfo'
+st.sidebar.markdown(f"Secrets:\n {st.secrets}")
+st.sidebar.markdown(f"State:\n {st.session_state}")
+st.sidebar.markdown(f"Params:\n {st.experimental_get_query_params()}")
+
+import requests
+
+def exchange_code_for_token(code):
+    token_url = 'https://oauth2.googleapis.com/token'
+    # Prepare the data for the token request
+    data = {
+        'code': code,
+        'client_id': client_id,
+        'client_secret': client_secret,
+        'redirect_uri': redirect_uri,
+        'grant_type': 'authorization_code'
+    }
+    # Make a POST request to the token endpoint
+    response = requests.post(token_url, data=data)
+    response_data = response.json()
+    # Handle possible errors
+    if response.status_code != 200:
+        raise Exception("Failed to retrieve token: " + response_data.get('error_description', ''))
+    return response_data['access_token']
+
+def get_user_info(access_token):
+    user_info_url = 'https://www.googleapis.com/oauth2/v3/userinfo'
+    headers = {'Authorization': f'Bearer {access_token}'}
+    response = requests.get(user_info_url, headers=headers)
+    user_info = response.json()
+    # Handle possible errors
+    if response.status_code != 200:
+        raise Exception("Failed to retrieve user info: " + user_info.get('error_description', ''))
+    return user_info
 
 
-def run():
-    st.set_page_config(
-        page_title="Hello",
-        page_icon="👋",
-    )
+def main():
+    st.title('OAuth with Streamlit')
 
-    st.write("# Welcome to Streamlit! 👋")
+    # Initialize the session
+    session = OAuth2Session(client_id, client_secret, scope=scope, redirect_uri=redirect_uri)
 
-    st.sidebar.success("Select a demo above.")
+    # Check if the user is logged in
+    if 'token' in st.session_state:
+        user_info = st.session_state['user_info']
+        st.write(f"1. Welcome {user_info['name']}!")
+        # Do the main thing here
+    elif 'code' in st.experimental_get_query_params():
+        # Exchange the code for a token
+        token = exchange_code_for_token(st.experimental_get_query_params()['code'])
+        user_info = get_user_info(token)
+        st.session_state['token'] = token
+        st.session_state['user_info'] = user_info
+        st.write("2. Welcome, ", user_info['name'])
+        st.experimental_rerun()
+    else:
+        # Generate the authorization URL and state, save the state
+        uri, state = session.create_authorization_url(authorization_endpoint)
+        st.session_state['state'] = state
 
-    st.markdown(
-        """
-        Streamlit is an open-source app framework built specifically for
-        Machine Learning and Data Science projects.
-        **👈 Select a demo from the sidebar** to see some examples
-        of what Streamlit can do!
-        ### Want to learn more?
-        - Check out [streamlit.io](https://streamlit.io)
-        - Jump into our [documentation](https://docs.streamlit.io)
-        - Ask a question in our [community
-          forums](https://discuss.streamlit.io)
-        ### See more complex demos
-        - Use a neural net to [analyze the Udacity Self-driving Car Image
-          Dataset](https://github.com/streamlit/demo-self-driving)
-        - Explore a [New York City rideshare dataset](https://github.com/streamlit/demo-uber-nyc-pickups)
-    """
-    )
+        # Display the login link
+        st.markdown(f'[Login with Google]({uri})')
+
+        # Handle the callback from the OAuth provider
+        params = st.experimental_get_query_params()
+        if 'code' in params and params.get('state') == st.session_state.get('state'):
+            # Exchange the code for a token
+            token = session.fetch_token(token_endpoint, authorization_response=st.experimental_get_url())
+            st.session_state['token'] = token
+            st.experimental_rerun()
+
+if __name__ == '__main__':
+    main()
 
 
-if __name__ == "__main__":
-    run()
+
+
