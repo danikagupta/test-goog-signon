@@ -1,6 +1,7 @@
 import streamlit as st
 from authlib.integrations.requests_client import OAuth2Session
 import urllib.parse
+import pandas as pd
    
 
 # Replace these with your client details
@@ -52,8 +53,42 @@ def nav_to(url):
     """ % (url)
     st.write(nav_script, unsafe_allow_html=True)
 
+def get_sheet():
+    import requests
+    url = "https://v1.nocodeapi.com/gprof/google_sheets/ULJTWlUlxDbMDOzR"
+    params = {"tabId": 'Sheet1'}
+    r = requests.get(url = url, params = params)
+    print(f"R={r}")
+    result = r.json()
+    print(f"Result={result}")
+    d=result['data']
+    print(f"Result Data={d}")
+    df=pd.DataFrame(d)
+    print(result)
+    st.dataframe(df)
+    return df
+
+def process_user_info(user_info):
+    df=get_sheet()
+    subId=user_info['sub']
+    df=df[df['ID']==subId]
+    st.sidebar.data_editor(df)
+    if(len(df)>0):
+        st.sidebar.write("You are in the list")
+        st.sidebar.dataframe(df)
+    else:
+        st.sidebar.write("You are not in the list")
+        st.sidebar.dataframe(df)
+        url = "https://v1.nocodeapi.com/gprof/google_sheets/ULJTWlUlxDbMDOzR"
+        params = {"tabId": "Sheet1"}
+        data = [[subId,user_info['name'],'hi','en',2,2]]
+        r = requests.post(url = url, params = params, json = data)
+        result = r.json()
+        print(result)
+
 def main():
     st.title('OAuth with Streamlit')
+    
 
     # Initialize the session
     session = OAuth2Session(client_id, client_secret, scope=scope, redirect_uri=redirect_uri)
@@ -62,6 +97,8 @@ def main():
     if 'user_info' in st.session_state:
         user_info = st.session_state['user_info']
         st.write(f"1. Welcome {user_info['name']}!")
+        process_user_info(user_info)
+        #XXX
         # Do the main thing here
     elif 'scope' in st.experimental_get_query_params():
         # Exchange the code for a token
